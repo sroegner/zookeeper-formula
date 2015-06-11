@@ -41,13 +41,16 @@
 {%- set max_heap_size     = gc.get('max_heap_size', pc.get('max_heap_size', 1024)) %}
 {%- set initial_heap_size = gc.get('initial_heap_size', pc.get('initial_heap_size', 256)) %}
 {%- set jvm_opts          = gc.get('jvm_opts', pc.get('jvm_opts', None)) %}  
-
-{%- set alt_config   = salt['grains.get']('zookeeper:config:directory', '/etc/zookeeper/conf') %}
+{%- set alt_config   = gc.get('directory', pc.get('directory', '/etc/zookeeper/conf')) %}
 {%- set real_config  = alt_config + '-' + version %}
 {%- set alt_home     = prefix + '/zookeeper' %}
 {%- set real_home    = alt_home + '-' + version %}
 {%- set real_config_src  = real_home + '/conf' %}
 {%- set real_config_dist = alt_config + '.dist' %}
+
+
+{%- set targeting_method = g.get('targeting_method', p.get('targeting_method', 'grain')) %}
+{%- set zkserver_target  = g.get('zkserver_target', p.get('zkserver_target', 'roles:zookeeper')) %}
 
 {%- set force_mine_update = salt['mine.send']('network.get_hostname') %}
 {%- set zookeepers_host_dict = salt['mine.get']('roles:zookeeper', 'network.get_hostname', 'grain') %}
