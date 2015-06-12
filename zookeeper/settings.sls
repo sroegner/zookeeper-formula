@@ -27,10 +27,9 @@
 {%- set max_client_cnxns  = gc.get('max_client_cnxns', pc.get('max_client_cnxns', None)) %}
 # the maximum number of zookeeper nodes
 {%- set max_node_num      = gc.get('max_node_num', pc.get('max_node_num', 5)) %}
-{%- set server_list_override = gc.get('server_list_override', pc.get('server_list_override', {})) %}
+# allow to manually specify the zk dictionary in a pillar, avoiding the mine call
+{%- set server_list_override = pc.get('server_list_override', {}) %}
 
-
-#
 # JVM options - just follow grains/pillar settings for now
 #
 # set in - zookeeper:
@@ -107,7 +106,6 @@
 {%- set myid = zookeepers_with_ids.get(grains.id, '').split('+')|first() %}
 {%- endif %}
 
-{{zookeepers}}
 {%- set zk = {} %}
 {%- do zk.update( { 'uid': uid,
                            'version' : version,
@@ -141,5 +139,5 @@
                            'max_perm_size': max_perm_size,
                            'jvm_opts': jvm_opts,
                            'log_level': log_level,
-                        }) %}
+                  }) %}
 
