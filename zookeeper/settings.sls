@@ -25,6 +25,9 @@
 {%- set snap_retain_count = gc.get('snap_retain_count', pc.get('snap_retain_count', 3)) %}
 {%- set purge_interval    = gc.get('purge_interval', pc.get('purge_interval', None)) %}
 {%- set max_client_cnxns  = gc.get('max_client_cnxns', pc.get('max_client_cnxns', None)) %}
+# the maximum number of zookeeper nodes
+{%- set max_node_num      = gc.get('max_node_num', pc.get('max_node_num', 5)) %}
+{%- set server_list_override = gc.get('server_list_override', pc.get('server_list_override', {})) %}
 
 
 #
@@ -48,19 +51,29 @@
 {%- set real_config_src  = real_home + '/conf' %}
 {%- set real_config_dist = alt_config + '.dist' %}
 
-
+{%- if server_list_override | length == 0 %}
 {%- set targeting_method = g.get('targeting_method', p.get('targeting_method', 'grain')) %}
-{%- set zkserver_target  = g.get('zkserver_target', p.get('zkserver_target', 'roles:zookeeper')) %}
-
-{%- set force_mine_update = salt['mine.send']('network.get_hostname') %}
-{%- set zookeepers_host_dict = salt['mine.get']('roles:zookeeper', 'network.get_hostname', 'grain') %}
+{%- set server_target  = g.get('server_target', p.get('server_target', 'roles:zookeeper')) %}
+{%- set zookeepers_host_dict = salt['mine.get'](server_target, 'network.ip_addrs', targeting_method) %}
+{%- else %}
+{%- set zookeepers_host_dict = server_list_override %}
+{%- endif %}
+{%- if not zookeepers_host_dict %}
+{%- set zookeepers_host_dict = {} %}
+{%- endif %}
 {%- set zookeepers_ids = zookeepers_host_dict.keys() %}
-{%- set zookeepers_hosts = zookeepers_host_dict.values() %}
 {%- set zookeeper_host_num = zookeepers_ids | length() %}
 
+# if someone uses a matcher that ends up yielding 20 targets they might be better off with just 5 (or zookeeper:config:max_node_num) nodes
+{%- if zookeeper_host_num > max_node_num %}
+# for 2, 4, 6 ... nodes return (n -1)
+{%- set zookeeper_host_num = max_node_num %}
+{%- endif %}
+
+# the final sanity check to make sure we really come out with an odd number in the range of 3 .. odd(max_node_num)
 {%- if zookeeper_host_num == 0 %}
-# this will fail to even render but provide a hint as to what's wrong
-{{ 'No zookeeper nodes are defined (you need to set roles:zookeeper at least for one node in your cluster' }}
+{%- set no_zookeeper_servers = True %}
+{%- set node_count = 0 %}
 {%- elif zookeeper_host_num is odd %}
 # for 1, 3, 5 ... nodes just return the list
 {%- set node_count = zookeeper_host_num %}
@@ -69,26 +82,32 @@
 {%- set node_count = zookeeper_host_num - 1 %}
 {%- endif %}
 
-# yes, this is not pretty, but produces sth like:
-# {'node1': '0+node1', 'node2': '1+node2', 'node3': '2+node2'}
 {%- set zookeepers_with_ids = {} %}
+{%- set connection_string   = [] %}
+{%- set zookeepers          = [] %}
+{%- set zookeeper_host      = "" %}
+{%- set myid                = "" %}
+
+{%- if node_count > 0 %}
+# this produces a structure looking like this:
+# {'node1': '0+node1', 'node2': '1+node2', 'node3': '2+node2'}
 {%- for i in range(node_count) %}
-{%- do zookeepers_with_ids.update({zookeepers_ids[i] : '{0:d}'.format(i) + '+' + zookeepers_hosts[i] })  %}
+{%- do zookeepers_with_ids.update({zookeepers_ids[i] : '{0:d}'.format(i) + '+' + zookeepers_host_dict.values()[i] })  %}
 {%- endfor %}
 
-# a plain list of hostnames
+# a plain list of hostnames with their id prefixed
 {%- set zookeepers = zookeepers_with_ids.values() | sort() %}
 # this is the 'safe bet' to use for just connection settings (backwards compatible)
 {%- set zookeeper_host = (zookeepers | first()).split('+') | last() %}
 # produce the connection string, sth. like: 'host1:2181,host2:2181,host3:2181'
-{%- set connection_string = [] %}
 {%- for n in zookeepers %}
 {%- do connection_string.append( n.split('+') | last() + ':' + port | string ) %}
 {% endfor %}
-
 # return either the id of the host or an empty string
 {%- set myid = zookeepers_with_ids.get(grains.id, '').split('+')|first() %}
+{%- endif %}
 
+{{zookeepers}}
 {%- set zk = {} %}
 {%- do zk.update( { 'uid': uid,
                            'version' : version,
@@ -123,3 +142,4 @@
                            'jvm_opts': jvm_opts,
                            'log_level': log_level,
                         }) %}
+
